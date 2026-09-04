@@ -365,7 +365,7 @@ class SOPApp(ctk.CTk):
     self.renderizar_tab_historial(material)
 
   # ==============================================================================
-  # PESTAÑA 1: INFO & ESTÁNDAR (SIN SCROLLBARS Y ÁREA DE IMAGEN AMPLIADA)
+  # PESTAÑA 1: INFO & ESTÁNDAR (FORMATO EQUILIBRADO SIN ESPACIO VACÍO ABAJO)
   # ==============================================================================
   def renderizar_tab_info(self, material, maquina):
     for child in self.tab_info.winfo_children():
@@ -374,15 +374,15 @@ class SOPApp(ctk.CTk):
     frame_main = ctk.CTkFrame(self.tab_info, fg_color="transparent")
     frame_main.pack(fill="both", expand=True, padx=10, pady=5)
 
-    # Columna 1: Datos Generales (Sin scroll)
+    # COLUMNA 1: Datos Generales
     col_izq = ctk.CTkFrame(frame_main, fg_color="transparent")
     col_izq.pack(side="left", fill="both", expand=False, padx=(0, 10))
 
-    # Columna 2: Estándar y Herramientas (Sin scroll, ancho ajustado)
+    # COLUMNA 2: Estándar y Herramientas
     col_centro = ctk.CTkFrame(frame_main, fg_color="transparent")
     col_centro.pack(side="left", fill="both", expand=False, padx=(0, 10))
 
-    # Columna 3: Imagen Principal del Material (EXPANDIBLE Y CON MÁS ESPACIO)
+    # COLUMNA 3: Imagen Principal
     col_der = ctk.CTkFrame(
         frame_main,
         width=480,
@@ -416,9 +416,9 @@ class SOPApp(ctk.CTk):
           fg_color="#B0C4DE",
           border_width=1,
           border_color="#1F4E79",
-          corner_radius=0,
+          corner_radius=4,
       )
-      tbl_g.pack(fill="x", pady=(0, 5))
+      tbl_g.pack(fill="both", expand=True, pady=(0, 2))
 
       tbl_g.grid_columnconfigure(0, weight=1)
       tbl_g.grid_columnconfigure(1, weight=2)
@@ -437,7 +437,7 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_k,
             text=f"{nombre_limpio}:",
-            font=("Helvetica", 13, "bold"),
+            font=("Helvetica", 12, "bold"),
             text_color="#1F4E79",
             anchor="w",
         ).pack(anchor="w", padx=6, pady=2)
@@ -447,14 +447,14 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_v,
             text=val if val else "---",
-            font=("Helvetica", 14, "bold"),
+            font=("Helvetica", 13, "bold"),
             text_color="#000000",
             anchor="w",
         ).pack(anchor="w", padx=6, pady=2)
 
         f_idx += 1
 
-    # 2. ESTÁNDAR DE PRODUCCIÓN (1RA COLUMNA COMPACTADA)
+    # 2. ESTÁNDAR DE PRODUCCIÓN Y HERRAMIENTAS
     col_mat_e = self.data_estandar.columns[0]
     df_e = self.data_estandar[
         self.data_estandar[col_mat_e].apply(limpiar_texto) == material
@@ -487,15 +487,13 @@ class SOPApp(ctk.CTk):
           border_color="#000000",
           corner_radius=0,
       )
-      tbl.pack(fill="x", pady=(0, 8))
+      tbl.pack(fill="x", pady=(0, 10))
 
-      # Reducción de la proporción de la 1ra columna a weight=1
       tbl.grid_columnconfigure(0, weight=1)
       tbl.grid_columnconfigure(1, weight=1)
       tbl.grid_columnconfigure(2, weight=1)
       tbl.grid_columnconfigure(3, weight=1)
 
-      # --- FILA 1: Encabezados ---
       c_est = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
       c_est.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=1, pady=1)
       ctk.CTkLabel(
@@ -514,9 +512,8 @@ class SOPApp(ctk.CTk):
           text="Piezas por turno (al 100%)",
           font=("Helvetica", 13, "bold"),
           text_color="#000000",
-      ).pack(pady=1)
+      ).pack(pady=2)
 
-      # --- FILA 2: Sub-encabezados Turnos ---
       headers_turnos = ["1er Turno", "2do. Turno", "3er Turno."]
       for idx_t, ht in enumerate(headers_turnos):
         c_h = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
@@ -526,9 +523,8 @@ class SOPApp(ctk.CTk):
             text=ht,
             font=("Helvetica", 12, "bold"),
             text_color="#000000",
-        ).pack(pady=1, padx=2)
+        ).pack(pady=2, padx=2)
 
-      # --- FILA 3: Valores Numéricos ---
       valores_f3 = [pzs_hr, t1, t2, t3]
       for idx_v, val_num in enumerate(valores_f3):
         c_v = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
@@ -538,9 +534,8 @@ class SOPApp(ctk.CTk):
             text=val_num,
             font=("Helvetica", 24, "bold"),
             text_color="#000000",
-        ).pack(pady=3, padx=2)
+        ).pack(pady=4, padx=2)
 
-      # --- FILAS 4, 5 y 6: Parámetros Inferiores ---
       filas_inferiores = [
           ("PIEZAS POR CICLO:", pzs_ciclo),
           ("TIEMPO CICLO:", tiempo_ciclo),
@@ -558,7 +553,7 @@ class SOPApp(ctk.CTk):
             font=("Helvetica", 12, "bold"),
             text_color="#000000",
             anchor="e",
-        ).pack(side="right", padx=4, pady=2)
+        ).pack(side="right", padx=4, pady=3)
 
         c_val = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
         c_val.grid(
@@ -567,11 +562,10 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_val,
             text=v_inf,
-            font=("Helvetica", 16, "bold"),
+            font=("Helvetica", 15, "bold"),
             text_color="#000000",
-        ).pack(expand=True, pady=2)
+        ).pack(expand=True, pady=3)
 
-      # Herramientas Requeridas
       col_herram = df_e.columns[8] if len(df_e.columns) > 8 else None
       if col_herram:
         herramientas = [
@@ -583,26 +577,31 @@ class SOPApp(ctk.CTk):
               text="🔧 HERRAMIENTAS REQUERIDAS",
               font=("Helvetica", 16, "bold"),
               text_color="#1F4E79",
-          ).pack(anchor="w", pady=(4, 4))
+          ).pack(anchor="w", pady=(6, 4))
+
+          frame_herramientas_box = ctk.CTkFrame(
+              col_centro, fg_color="transparent"
+          )
+          frame_herramientas_box.pack(fill="both", expand=True)
 
           for h_item in herramientas:
             card_h = ctk.CTkFrame(
-                col_centro,
-                fg_color="#F8FAFC",
+                frame_herramientas_box,
+                fg_color="#FFFFFF",
                 border_width=1,
-                border_color="#E2E8F0",
+                border_color="#D1D5DB",
                 corner_radius=5,
             )
-            card_h.pack(fill="x", pady=1)
+            card_h.pack(fill="x", pady=2)
             ctk.CTkLabel(
                 card_h,
                 text=f"• {h_item}",
-                font=("Helvetica", 14, "bold"),
+                font=("Helvetica", 13, "bold"),
                 text_color="#222222",
                 anchor="w",
-            ).pack(anchor="w", padx=8, pady=2)
+            ).pack(anchor="w", padx=10, pady=5)
 
-    # 3. Imagen Principal (Con más espacio disponible)
+    # 3. FOTOGRAFÍA PRINCIPAL
     imgs_m = self.imgs_general.get(material, [])
     if imgs_m:
       pil_img = imgs_m[0]
