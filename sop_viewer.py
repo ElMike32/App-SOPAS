@@ -75,7 +75,11 @@ def normalizar_fondo_blanco(pil_img):
     return pil_img.convert("RGB")
 
 
+# ==============================================================================
+# MOTOR ROBUSTO DE EXTRACCIÓN DE IMÁGENES CORREGIDO POR FILA Y HOJA
+# ==============================================================================
 def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
+  """Extrae las imágenes vinculando de manera estricta la fila de la imagen con la fila del Material en la hoja dada"""
   mapa_imgs = {}
   if not os.path.exists(ruta_excel):
     return mapa_imgs
@@ -86,41 +90,39 @@ def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
       return mapa_imgs
     ws = wb[nombre_hoja]
 
+    # Crear mapa de Fila -> Material en esta hoja específica
     filas_mat = {}
     for row in range(2, ws.max_row + 1):
       val_mat = limpiar_texto(ws.cell(row=row, column=col_mat_idx + 1).value)
       if val_mat:
         filas_mat[row] = val_mat
 
+    # Extraer imágenes verificando su anclaje exacto en la fila de la hoja
     for img in ws._images:
       try:
-        row_target = img.anchor._from.row + 1
+        # Fila donde está anclada la imagen (1-indexed)
+        row_target = (
+            img.anchor._from.row + 1
+            if hasattr(img.anchor, "_from")
+            else img.anchor.row
+        )
+
+        # Si el anclaje no es exacto, buscar la fila de material más cercana hacia arriba
+        if row_target not in filas_mat:
+          filas_validas = [r for r in filas_mat.keys() if r <= row_target]
+          if filas_validas:
+            row_target = max(filas_validas)
+
         if row_target in filas_mat:
           mat = filas_mat[row_target]
           pil_img = Image.open(io.BytesIO(img._data()))
           pil_img = normalizar_fondo_blanco(pil_img)
+
           if mat not in mapa_imgs:
             mapa_imgs[mat] = []
           mapa_imgs[mat].append(pil_img)
-      except Exception:
+      except Exception as ex_img:
         pass
-
-    if not mapa_imgs:
-      with zipfile.ZipFile(ruta_excel, "r") as z:
-        media_files = [
-            f for f in z.namelist() if f.startswith("xl/media/")
-        ]
-        if media_files:
-          materiales_ordenados = list(dict.fromkeys(filas_mat.values()))
-          for idx, media_path in enumerate(sorted(media_files)):
-            if idx < len(materiales_ordenados):
-              mat = materiales_ordenados[idx]
-              img_data = z.read(media_path)
-              pil_img = Image.open(io.BytesIO(img_data))
-              pil_img = normalizar_fondo_blanco(pil_img)
-              if mat not in mapa_imgs:
-                mapa_imgs[mat] = []
-              mapa_imgs[mat].append(pil_img)
 
   except Exception as e:
     print(f"[AVISO] Error al procesar imágenes de {nombre_hoja}: {e}")
@@ -128,6 +130,9 @@ def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
   return mapa_imgs
 
 
+# ==============================================================================
+# APLICACIÓN PRINCIPAL
+# ==============================================================================
 class SOPApp(ctk.CTk):
 
   def __init__(self):
@@ -301,6 +306,7 @@ class SOPApp(ctk.CTk):
       self.data_epp_req = pd.read_excel(xls, sheet_name=7)
       self.data_historial = pd.read_excel(xls, sheet_name=8)
 
+      # Carga estricta por nombre de hoja
       self.imgs_general = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[0])
       self.imgs_componentes = extraer_imagenes_hoja(
           EXCEL_FILE, xls.sheet_names[2]
@@ -463,7 +469,6 @@ class SOPApp(ctk.CTk):
         f_item = ctk.CTkFrame(frame_kv, fg_color="transparent")
         f_item.pack(fill="x", pady=1.5)
 
-        # Aumento de tamaño y grosor en títulos de la izquierda
         ctk.CTkLabel(
             f_item,
             text=f"{nombre_limpio}",
@@ -528,7 +533,7 @@ class SOPApp(ctk.CTk):
           text_color=COLOR_ACCENT,
       ).pack(pady=(0, 6))
 
-      # Sub-tarjetas de Turnos (Resaltados)
+      # Sub-tarjetas de Turnos
       grid_turnos = ctk.CTkFrame(col_centro, fg_color="transparent")
       grid_turnos.pack(fill="x", padx=15, pady=(0, 8))
       grid_turnos.grid_columnconfigure((0, 1, 2), weight=1)
@@ -581,7 +586,7 @@ class SOPApp(ctk.CTk):
             text_color=COLOR_TEXT_PRIMARY,
         ).pack(side="right")
 
-      # Sección Herramientas Requeridas (Diseño Optimizado para hasta 9 elementos)
+      # Sección Herramientas Requeridas
       col_herram = df_e.columns[8] if len(df_e.columns) > 8 else None
       if col_herram:
         herramientas = [
@@ -600,7 +605,7 @@ class SOPApp(ctk.CTk):
           frame_pills = ctk.CTkFrame(col_centro, fg_color="transparent")
           frame_pills.pack(fill="both", expand=True, padx=15, pady=(0, 10))
 
-          for h_item in herramientas[:9]:  # Muestra hasta 9 herramientas
+          for h_item in herramientas[:9]:
             pill = ctk.CTkFrame(
                 frame_pills, fg_color=COLOR_BADGE_BG, corner_radius=6
             )
