@@ -4,7 +4,6 @@ import re
 import sys
 import ctypes
 import zipfile
-import xml.etree.ElementTree as ET
 import pandas as pd
 from PIL import Image
 from openpyxl import load_workbook
@@ -16,7 +15,11 @@ ctk.set_default_color_theme("blue")
 
 EXCEL_FILE = "Prueba1.xlsx"
 
+# ==============================================================================
+# FUNCIONES AUXILIARES Y PROCESAMIENTO DE IMÁGENES
+# ==============================================================================
 def ocultar_archivo_windows(ruta):
+    """ Oculta un archivo o carpeta en sistemas Windows mediante la API Win32 """
     if os.name == 'nt' and os.path.exists(ruta):
         try:
             ctypes.windll.kernel32.SetFileAttributesW(str(ruta), 2)
@@ -36,20 +39,28 @@ def normalizar_texto(texto):
         texto = texto.replace(a, b)
     return texto
 
+def normalizar_fondo_blanco(pil_img):
+    """ Convierte imágenes con canal de transparencia (RGBA/PNG) o recorte a un lienzo de fondo blanco sólido """
+    try:
+        if pil_img.mode in ('RGBA', 'LA') or (pil_img.mode == 'P' and 'transparency' in pil_img.info):
+            alpha_img = pil_img.convert('RGBA')
+            canvas = Image.new('RGBA', alpha_img.size, (255, 255, 255, 255))
+            canvas.paste(alpha_img, mask=alpha_img.split()[3])
+            return canvas.convert('RGB')
+        return pil_img.convert('RGB')
+    except Exception:
+        return pil_img.convert('RGB')
+
 # ==============================================================================
-# MOTOR ROBUSTO DE EXTRACCIÓN DE IMÁGENES (XML/ZIP INTERNO DE EXCEL)
+# MOTOR ROBUSTO DE EXTRACCIÓN DE IMÁGENES DE EXCEL
 # ==============================================================================
 def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
-    """
-    Extrae mapas de imágenes mapeados por fila/material leyendo
-    directamente los esquemas XML del paquete .xlsx.
-    """
+    """ Extrae las imágenes de la hoja especificada y aplica la conversión de fondo blanco """
     mapa_imgs = {}
     if not os.path.exists(ruta_excel):
         return mapa_imgs
 
     try:
-        # 1. Obtener orden de filas por Material con openpyxl
         wb = load_workbook(ruta_excel, data_only=True)
         if nombre_hoja not in wb.sheetnames:
             return mapa_imgs
@@ -61,32 +72,32 @@ def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
             if val_mat:
                 filas_mat[row] = val_mat
 
-        # Método A: Extracción directa vía openpyxl _images
+        # Extracción vía openpyxl _images
         for img in ws._images:
             try:
                 row_target = img.anchor._from.row + 1
                 if row_target in filas_mat:
                     mat = filas_mat[row_target]
-                    pil_img = Image.open(io.BytesIO(img._data())).convert('RGB')
+                    pil_img = Image.open(io.BytesIO(img._data()))
+                    pil_img = normalizar_fondo_blanco(pil_img)
                     if mat not in mapa_imgs:
                         mapa_imgs[mat] = []
                     mapa_imgs[mat].append(pil_img)
             except Exception:
                 pass
 
-        # Método B: Si el método A no encontró imágenes (Place in cell), leer mediante ZIP/XML
+        # Extracción respaldo vía ZIP/XML para celdas con imágenes incrustadas (Place in cell)
         if not mapa_imgs:
             with zipfile.ZipFile(ruta_excel, 'r') as z:
-                # Buscar archivos de medios
                 media_files = [f for f in z.namelist() if f.startswith('xl/media/')]
                 if media_files:
-                    # Asignar imágenes secuenciales a los materiales según el orden de filas
                     materiales_ordenados = list(dict.fromkeys(filas_mat.values()))
                     for idx, media_path in enumerate(sorted(media_files)):
                         if idx < len(materiales_ordenados):
                             mat = materiales_ordenados[idx]
                             img_data = z.read(media_path)
-                            pil_img = Image.open(io.BytesIO(img_data)).convert('RGB')
+                            pil_img = Image.open(io.BytesIO(img_data))
+                            pil_img = normalizar_fondo_blanco(pil_img)
                             if mat not in mapa_imgs:
                                 mapa_imgs[mat] = []
                             mapa_imgs[mat].append(pil_img)
@@ -109,10 +120,10 @@ class SOPApp(ctk.CTk):
             ocultar_archivo_windows(ruta_internal)
 
         self.title("QRs Componentes - Visor de SOPs")
-        self.geometry("1350x880")
+        self.geometry("1380x880")
         self.minsize(1150, 750)
 
-        # Contenedores de datos
+        # DataFrames de Excel
         self.data_general = pd.DataFrame()
         self.data_estandar = pd.DataFrame()
         self.data_componentes = pd.DataFrame()
@@ -123,7 +134,7 @@ class SOPApp(ctk.CTk):
         self.data_epp_req = pd.DataFrame()
         self.data_historial = pd.DataFrame()
 
-        # Cachés de imágenes por hoja
+        # Cachés de imágenes procesadas con fondo blanco
         self.imgs_general = {}
         self.imgs_componentes = {}
         self.imgs_pasos = {}
@@ -172,7 +183,7 @@ class SOPApp(ctk.CTk):
             border_color="#1F4E79"
         )
 
-        # 2. Banner de Material Seleccionado
+        # 2. Banner Superior
         self.frame_banner = ctk.CTkFrame(self, corner_radius=8, fg_color="#E6F0FA")
         self.frame_banner.pack(fill="x", padx=15, pady=(0, 10))
 
@@ -200,7 +211,7 @@ class SOPApp(ctk.CTk):
         )
         self.lbl_banner_desc.pack(side="right", padx=15, pady=8)
 
-        # 3. Pestañas Principales
+        # 3. Pestañas de la App
         self.tabview = ctk.CTkTabview(self, corner_radius=10)
         self.tabview.pack(fill="both", expand=True, padx=15, pady=(0, 10))
 
@@ -214,7 +225,7 @@ class SOPApp(ctk.CTk):
         self._setup_tab_pasos()
 
     # ==============================================================================
-    # CARGA DE DATOS Y EXTRACCIÓN
+    # CARGA DE DATOS
     # ==============================================================================
     def cargar_datos_excel(self):
         if not os.path.exists(EXCEL_FILE):
@@ -232,14 +243,13 @@ class SOPApp(ctk.CTk):
             self.data_epp_req = pd.read_excel(xls, sheet_name=7)
             self.data_historial = pd.read_excel(xls, sheet_name=8)
 
-            # Extraer imágenes por hoja
+            # Carga e imágenes
             self.imgs_general = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[0])
             self.imgs_componentes = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[2])
             self.imgs_pasos = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[4])
             self.imgs_epp_ob = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[6])
             self.imgs_epp_req = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[7])
 
-            # Cargar lista de Material + Máquina
             col_mat = self.data_general.columns[0]
             col_maq = self.data_general.columns[2] if len(self.data_general.columns) > 2 else col_mat
             col_desc = self.data_general.columns[6] if len(self.data_general.columns) > 6 else col_mat
@@ -318,24 +328,25 @@ class SOPApp(ctk.CTk):
         self.renderizar_tab_historial(material)
 
     # ==============================================================================
-    # PESTAÑA 1: INFO & ESTÁNDAR (LAYOUT OPTIMIZADO SIN SCROLL)
+    # PESTAÑA 1: INFO & ESTÁNDAR (3 COLUMNAS OPTIMIZADAS)
     # ==============================================================================
     def renderizar_tab_info(self, material, maquina):
         for child in self.tab_info.winfo_children():
             child.destroy()
 
-        # Contenedor principal dividido en 2 columnas (Texto Izquierda, Imagen Derecha)
         frame_main = ctk.CTkFrame(self.tab_info, fg_color="transparent")
         frame_main.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Columna Izquierda (Datos e Información Técnica)
-        frame_izq = ctk.CTkScrollableFrame(frame_main, width=650)
-        frame_izq.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        col_izq = ctk.CTkFrame(frame_main, fg_color="transparent")
+        col_izq.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        # Columna Derecha (Imagen Grande del Material)
-        frame_der = ctk.CTkFrame(frame_main, width=500, corner_radius=10, border_width=1, border_color="#CCCCCC", fg_color="#FFFFFF")
-        frame_der.pack(side="right", fill="both", expand=True)
+        col_centro = ctk.CTkFrame(frame_main, fg_color="transparent")
+        col_centro.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
+        col_der = ctk.CTkFrame(frame_main, width=420, corner_radius=10, border_width=1, border_color="#CCCCCC", fg_color="#FFFFFF")
+        col_der.pack(side="right", fill="both", expand=False)
+
+        # 1. Datos Generales
         col_mat_g = self.data_general.columns[0]
         df_g = self.data_general[self.data_general[col_mat_g].apply(limpiar_texto) == material]
 
@@ -344,27 +355,31 @@ class SOPApp(ctk.CTk):
             desc = limpiar_texto(row.iloc[6]) if len(row) > 6 else ""
             self.lbl_banner_desc.configure(text=desc)
 
-            # Sección Datos Generales
-            ctk.CTkLabel(frame_izq, text="📋 FICHA TÉCNICA Y DATOS GENERALES", font=("Helvetica", 16, "bold"), text_color="#1F4E79").pack(anchor="w", padx=10, pady=(5, 10))
+            ctk.CTkLabel(col_izq, text="📋 DATOS GENERALES", font=("Helvetica", 15, "bold"), text_color="#1F4E79").pack(anchor="w", pady=(0, 10))
 
             cols = self.data_general.columns
-            for idx, col_name in enumerate(cols):
+            for col_name in cols:
                 val = limpiar_texto(row[col_name])
                 if col_name.lower().startswith("imagen"):
                     continue
 
-                f_row = ctk.CTkFrame(frame_izq, fg_color="transparent")
-                f_row.pack(fill="x", padx=10, pady=2)
+                nombre_limpio = str(col_name).strip().rstrip(":")
 
-                ctk.CTkLabel(f_row, text=f"• {col_name}:", font=("Helvetica", 14, "bold"), text_color="#1F4E79", width=180, anchor="w").pack(side="left")
-                ctk.CTkLabel(f_row, text=val if val else "---", font=("Helvetica", 15, "bold"), text_color="#000000", anchor="w").pack(side="left", fill="x", expand=True)
+                f_row = ctk.CTkFrame(col_izq, fg_color="transparent")
+                f_row.pack(fill="x", pady=2)
 
-        # Sección Estándar y Herramientas
+                lbl_k = ctk.CTkLabel(f_row, text=f"• {nombre_limpio}: ", font=("Helvetica", 13, "bold"), text_color="#1F4E79", anchor="w")
+                lbl_k.pack(side="left")
+
+                lbl_v = ctk.CTkLabel(f_row, text=val if val else "---", font=("Helvetica", 13, "bold"), text_color="#000000", anchor="w")
+                lbl_v.pack(side="left", fill="x", expand=True)
+
+        # 2. Estándar y Herramientas
         col_mat_e = self.data_estandar.columns[0]
         df_e = self.data_estandar[self.data_estandar[col_mat_e].apply(limpiar_texto) == material]
 
         if not df_e.empty:
-            ctk.CTkLabel(frame_izq, text="⚙️ ESTÁNDAR DE PRODUCCIÓN", font=("Helvetica", 16, "bold"), text_color="#1F4E79").pack(anchor="w", padx=10, pady=(20, 10))
+            ctk.CTkLabel(col_centro, text="⚙️ ESTÁNDAR DE PRODUCCIÓN", font=("Helvetica", 15, "bold"), text_color="#1F4E79").pack(anchor="w", pady=(0, 10))
 
             row1 = df_e.iloc[0]
             campos_est = [
@@ -373,33 +388,33 @@ class SOPApp(ctk.CTk):
                 ("WIP MAX", row1.iloc[7])
             ]
 
-            grid_e = ctk.CTkFrame(frame_izq, fg_color="#F0F4F8", corner_radius=6)
-            grid_e.pack(fill="x", padx=10, pady=5)
+            frame_est_box = ctk.CTkFrame(col_centro, fg_color="#F0F4F8", corner_radius=8)
+            frame_est_box.pack(fill="x", pady=(0, 15))
 
-            for idx, (k, v) in enumerate(campos_est):
-                r, c = divmod(idx, 4)
-                f_item = ctk.CTkFrame(grid_e, fg_color="transparent")
-                f_item.grid(row=r, column=c, padx=10, pady=6, sticky="w")
-                ctk.CTkLabel(f_item, text=f"{k}:", font=("Helvetica", 12, "bold"), text_color="#1F4E79").pack(anchor="w")
-                ctk.CTkLabel(f_item, text=limpiar_texto(v) or "---", font=("Helvetica", 16, "bold"), text_color="#111111").pack(anchor="w")
+            for k, v in campos_est:
+                f_item = ctk.CTkFrame(frame_est_box, fg_color="transparent")
+                f_item.pack(fill="x", padx=12, pady=3)
+
+                ctk.CTkLabel(f_item, text=f"• {k}:", font=("Helvetica", 12, "bold"), text_color="#1F4E79", width=110, anchor="w").pack(side="left")
+                ctk.CTkLabel(f_item, text=limpiar_texto(v) or "---", font=("Helvetica", 14, "bold"), text_color="#111111", anchor="w").pack(side="left")
 
             col_herram = df_e.columns[8] if len(df_e.columns) > 8 else None
             if col_herram:
                 herramientas = [limpiar_texto(h) for h in df_e[col_herram].dropna() if limpiar_texto(h)]
                 if herramientas:
-                    ctk.CTkLabel(frame_izq, text="🔧 Herramientas Requeridas:", font=("Helvetica", 15, "bold"), text_color="#1F4E79").pack(anchor="w", padx=10, pady=(15, 5))
+                    ctk.CTkLabel(col_centro, text="🔧 HERRAMIENTAS REQUERIDAS", font=("Helvetica", 15, "bold"), text_color="#1F4E79").pack(anchor="w", pady=(5, 5))
                     for h_item in herramientas:
-                        ctk.CTkLabel(frame_izq, text=f"  • {h_item}", font=("Helvetica", 14, "bold"), text_color="#222222").pack(anchor="w", padx=15, pady=2)
+                        ctk.CTkLabel(col_centro, text=f"  • {h_item}", font=("Helvetica", 13, "bold"), text_color="#222222", anchor="w").pack(anchor="w", pady=1)
 
-        # Renderizar Imagen Principal del Material a la Derecha
+        # 3. Imagen Principal
         imgs_m = self.imgs_general.get(material, [])
         if imgs_m:
             pil_img = imgs_m[0]
-            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(450, 420))
-            lbl_img = ctk.CTkLabel(frame_der, image=ctk_img, text="")
+            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(380, 380))
+            lbl_img = ctk.CTkLabel(col_der, image=ctk_img, text="")
             lbl_img.pack(expand=True, fill="both", padx=15, pady=15)
         else:
-            ctk.CTkLabel(frame_der, text="📷 Fotografía del Material\n(No disponible en Excel)", font=("Helvetica", 14), text_color="#888888").pack(expand=True)
+            ctk.CTkLabel(col_der, text="📷 Fotografía del Material\n(No disponible)", font=("Helvetica", 14), text_color="#888888").pack(expand=True)
 
     # ==============================================================================
     # PESTAÑA 2: COMPONENTES
