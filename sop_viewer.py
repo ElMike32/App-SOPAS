@@ -76,10 +76,10 @@ def normalizar_fondo_blanco(pil_img):
 
 
 # ==============================================================================
-# MOTOR ROBUSTO DE EXTRACCIÓN DE IMÁGENES CORREGIDO POR FILA Y HOJA
+# MOTOR HÍBRIDO DE EXTRACCIÓN DE IMÁGENES A PRUEBA DE ERRORES
 # ==============================================================================
 def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
-  """Extrae las imágenes vinculando de manera estricta la fila de la imagen con la fila del Material en la hoja dada"""
+  """Extrae imágenes combinando openpyxl y análisis ZIP directo para soportar cualquier tipo de anclaje de Excel"""
   mapa_imgs = {}
   if not os.path.exists(ruta_excel):
     return mapa_imgs
@@ -90,28 +90,32 @@ def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
       return mapa_imgs
     ws = wb[nombre_hoja]
 
-    # Crear mapa de Fila -> Material en esta hoja específica
+    # Map de Fila -> Material en la hoja especificada
     filas_mat = {}
     for row in range(2, ws.max_row + 1):
       val_mat = limpiar_texto(ws.cell(row=row, column=col_mat_idx + 1).value)
       if val_mat:
         filas_mat[row] = val_mat
 
-    # Extraer imágenes verificando su anclaje exacto en la fila de la hoja
-    for img in ws._images:
-      try:
-        # Fila donde está anclada la imagen (1-indexed)
-        row_target = (
-            img.anchor._from.row + 1
-            if hasattr(img.anchor, "_from")
-            else img.anchor.row
-        )
+    if not filas_mat:
+      return mapa_imgs
 
-        # Si el anclaje no es exacto, buscar la fila de material más cercana hacia arriba
-        if row_target not in filas_mat:
-          filas_validas = [r for r in filas_mat.keys() if r <= row_target]
-          if filas_validas:
-            row_target = max(filas_validas)
+    # --- MÉTODO A: Extracción directa vía openpyxl ---
+    for img in getattr(ws, "_images", []):
+      try:
+        row_target = None
+        if hasattr(img, "anchor"):
+          anc = img.anchor
+          if hasattr(anc, "_from") and hasattr(anc._from, "row"):
+            row_target = anc._from.row + 1
+          elif hasattr(anc, "row"):
+            row_target = anc.row + 1
+
+        if row_target is None or row_target not in filas_mat:
+          if row_target is not None:
+            filas_validas = [r for r in filas_mat.keys() if r <= row_target]
+            if filas_validas:
+              row_target = max(filas_validas)
 
         if row_target in filas_mat:
           mat = filas_mat[row_target]
@@ -121,8 +125,26 @@ def extraer_imagenes_hoja(ruta_excel, nombre_hoja, col_mat_idx=0):
           if mat not in mapa_imgs:
             mapa_imgs[mat] = []
           mapa_imgs[mat].append(pil_img)
-      except Exception as ex_img:
+      except Exception:
         pass
+
+    # --- MÉTODO B (Respaldos): Si openpyxl no detectó imágenes, extraer vía ZIP en orden estricto ---
+    if not mapa_imgs:
+      with zipfile.ZipFile(ruta_excel, "r") as z:
+        media_files = [
+            f for f in z.namelist() if f.startswith("xl/media/")
+        ]
+        if media_files:
+          mats_unicos = list(dict.fromkeys(filas_mat.values()))
+          for idx, media_path in enumerate(sorted(media_files)):
+            if idx < len(mats_unicos):
+              mat = mats_unicos[idx]
+              img_data = z.read(media_path)
+              pil_img = Image.open(io.BytesIO(img_data))
+              pil_img = normalizar_fondo_blanco(pil_img)
+              if mat not in mapa_imgs:
+                mapa_imgs[mat] = []
+              mapa_imgs[mat].append(pil_img)
 
   except Exception as e:
     print(f"[AVISO] Error al procesar imágenes de {nombre_hoja}: {e}")
@@ -306,7 +328,6 @@ class SOPApp(ctk.CTk):
       self.data_epp_req = pd.read_excel(xls, sheet_name=7)
       self.data_historial = pd.read_excel(xls, sheet_name=8)
 
-      # Carga estricta por nombre de hoja
       self.imgs_general = extraer_imagenes_hoja(EXCEL_FILE, xls.sheet_names[0])
       self.imgs_componentes = extraer_imagenes_hoja(
           EXCEL_FILE, xls.sheet_names[2]
