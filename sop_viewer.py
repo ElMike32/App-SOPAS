@@ -365,7 +365,7 @@ class SOPApp(ctk.CTk):
     self.renderizar_tab_historial(material)
 
   # ==============================================================================
-  # PESTAÑA 1: INFO & ESTÁNDAR (TABLA ESTÁNDAR EXACTA A IMAGEN)
+  # PESTAÑA 1: INFO & ESTÁNDAR (TABLAS CUADRICULADAS OPTIMIZADAS)
   # ==============================================================================
   def renderizar_tab_info(self, material, maquina):
     for child in self.tab_info.winfo_children():
@@ -380,7 +380,7 @@ class SOPApp(ctk.CTk):
     )
     col_izq.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-    # Columna 2: Estándar Formateado como Tabla y Herramientas
+    # Columna 2: Estándar y Herramientas
     col_centro = ctk.CTkScrollableFrame(
         frame_main, fg_color="transparent", width=450
     )
@@ -397,7 +397,7 @@ class SOPApp(ctk.CTk):
     )
     col_der.pack(side="right", fill="both", expand=False)
 
-    # 1. DATOS GENERALES
+    # 1. DATOS GENERALES (TABLA CUADRICULADA CERRADA)
     col_mat_g = self.data_general.columns[0]
     df_g = self.data_general[
         self.data_general[col_mat_g].apply(limpiar_texto) == material
@@ -415,7 +415,21 @@ class SOPApp(ctk.CTk):
           text_color="#1F4E79",
       ).pack(anchor="w", pady=(0, 4))
 
+      # Marco con cuadrícula
+      tbl_g = ctk.CTkFrame(
+          col_izq,
+          fg_color="#B0C4DE",
+          border_width=1,
+          border_color="#1F4E79",
+          corner_radius=0,
+      )
+      tbl_g.pack(fill="x", pady=(0, 5))
+
+      tbl_g.grid_columnconfigure(0, weight=1)
+      tbl_g.grid_columnconfigure(1, weight=2)
+
       cols = self.data_general.columns
+      f_idx = 0
       for col_name in cols:
         val = limpiar_texto(row[col_name])
         if col_name.lower().startswith("imagen"):
@@ -423,34 +437,31 @@ class SOPApp(ctk.CTk):
 
         nombre_limpio = str(col_name).strip().rstrip(":")
 
-        card_dato = ctk.CTkFrame(
-            col_izq,
-            fg_color="#FFFFFF",
-            border_width=1,
-            border_color="#E0E0E0",
-            corner_radius=5,
-        )
-        card_dato.pack(fill="x", pady=1, padx=2)
-
-        lbl_k = ctk.CTkLabel(
-            card_dato,
-            text=f"{nombre_limpio}: ",
-            font=("Helvetica", 14, "bold"),
+        # Celda Etiqueta (Fondo ligeramente tintado)
+        c_k = ctk.CTkFrame(tbl_g, fg_color="#F0F4F8", corner_radius=0)
+        c_k.grid(row=f_idx, column=0, sticky="nsew", padx=1, pady=1)
+        ctk.CTkLabel(
+            c_k,
+            text=f"{nombre_limpio}:",
+            font=("Helvetica", 13, "bold"),
             text_color="#1F4E79",
             anchor="w",
-        )
-        lbl_k.pack(side="left", padx=(8, 2), pady=2)
+        ).pack(anchor="w", padx=8, pady=3)
 
-        lbl_v = ctk.CTkLabel(
-            card_dato,
+        # Celda Valor (Fondo Blanco)
+        c_v = ctk.CTkFrame(tbl_g, fg_color="#FFFFFF", corner_radius=0)
+        c_v.grid(row=f_idx, column=1, sticky="nsew", padx=1, pady=1)
+        ctk.CTkLabel(
+            c_v,
             text=val if val else "---",
-            font=("Helvetica", 15, "bold"),
+            font=("Helvetica", 14, "bold"),
             text_color="#000000",
             anchor="w",
-        )
-        lbl_v.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=2)
+        ).pack(anchor="w", padx=8, pady=3)
 
-    # 2. ESTÁNDAR DE PRODUCCIÓN (TABLA EXACTA)
+        f_idx += 1
+
+    # 2. ESTÁNDAR DE PRODUCCIÓN (COMPACTO Y FORMATEADO)
     col_mat_e = self.data_estandar.columns[0]
     df_e = self.data_estandar[
         self.data_estandar[col_mat_e].apply(limpiar_texto) == material
@@ -476,7 +487,7 @@ class SOPApp(ctk.CTk):
         tiempo_ciclo = f"{limpiar_entero(tiempo_ciclo)} seg."
       wip_max = limpiar_entero(row1.iloc[7])
 
-      # Marco Contenedor de Tabla con Bordes Negros
+      # Marco de Tabla Compacto
       tbl = ctk.CTkFrame(
           col_centro,
           fg_color="#000000",
@@ -491,15 +502,15 @@ class SOPApp(ctk.CTk):
       tbl.grid_columnconfigure(2, weight=1)
       tbl.grid_columnconfigure(3, weight=1)
 
-      # --- FILA 1: Encabezados Superiores ---
+      # --- FILA 1: Encabezado Estándar y Piezas por Turno ---
       c_est = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
       c_est.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=1, pady=1)
       ctk.CTkLabel(
           c_est,
           text="Estándar\n(Pzs/Hr.)",
-          font=("Helvetica", 13, "bold"),
+          font=("Helvetica", 12, "bold"),
           text_color="#000000",
-      ).pack(expand=True)
+      ).pack(expand=True, pady=2)
 
       c_turnos_tit = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
       c_turnos_tit.grid(
@@ -508,11 +519,11 @@ class SOPApp(ctk.CTk):
       ctk.CTkLabel(
           c_turnos_tit,
           text="Piezas por turno (al 100%)",
-          font=("Helvetica", 14, "bold"),
+          font=("Helvetica", 13, "bold"),
           text_color="#000000",
-      ).pack(pady=2)
+      ).pack(pady=1)
 
-      # --- FILA 2: Sub-encabezados de Turnos ---
+      # --- FILA 2: Sub-encabezados Turnos ---
       headers_turnos = ["1er Turno", "2do. Turno", "3er Turno."]
       for idx_t, ht in enumerate(headers_turnos):
         c_h = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
@@ -520,11 +531,11 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_h,
             text=ht,
-            font=("Helvetica", 13, "bold"),
+            font=("Helvetica", 12, "bold"),
             text_color="#000000",
-        ).pack(pady=2, padx=4)
+        ).pack(pady=1, padx=2)
 
-      # --- FILA 3: Valores Numéricos Grandes ---
+      # --- FILA 3: Números Ajustados (24px bold) ---
       valores_f3 = [pzs_hr, t1, t2, t3]
       for idx_v, val_num in enumerate(valores_f3):
         c_v = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
@@ -532,11 +543,11 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_v,
             text=val_num,
-            font=("Helvetica", 32, "bold"),
+            font=("Helvetica", 24, "bold"),
             text_color="#000000",
-        ).pack(pady=6, padx=4)
+        ).pack(pady=3, padx=2)
 
-      # --- FILAS 4, 5 y 6: Parámetros Inferiores Centrados ---
+      # --- FILAS 4, 5 y 6: Parámetros Inferiores ---
       filas_inferiores = [
           ("PIEZAS POR CICLO:", pzs_ciclo),
           ("TIEMPO CICLO:", tiempo_ciclo),
@@ -551,10 +562,10 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_lbl,
             text=k_inf,
-            font=("Helvetica", 13, "bold"),
+            font=("Helvetica", 12, "bold"),
             text_color="#000000",
             anchor="e",
-        ).pack(side="right", padx=10, pady=4)
+        ).pack(side="right", padx=6, pady=2)
 
         c_val = ctk.CTkFrame(tbl, fg_color="#FFFFFF", corner_radius=0)
         c_val.grid(
@@ -563,11 +574,11 @@ class SOPApp(ctk.CTk):
         ctk.CTkLabel(
             c_val,
             text=v_inf,
-            font=("Helvetica", 18, "bold"),
+            font=("Helvetica", 16, "bold"),
             text_color="#000000",
-        ).pack(expand=True, pady=4)
+        ).pack(expand=True, pady=2)
 
-      # Herramientas requeridas
+      # Herramientas Requeridas
       col_herram = df_e.columns[8] if len(df_e.columns) > 8 else None
       if col_herram:
         herramientas = [
@@ -579,7 +590,7 @@ class SOPApp(ctk.CTk):
               text="🔧 HERRAMIENTAS REQUERIDAS",
               font=("Helvetica", 16, "bold"),
               text_color="#1F4E79",
-          ).pack(anchor="w", pady=(6, 4))
+          ).pack(anchor="w", pady=(4, 4))
 
           for h_item in herramientas:
             card_h = ctk.CTkFrame(
